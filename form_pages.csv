@@ -101,33 +101,6 @@ https://edu.gcfglobal.org/en/computerbasics/what-is-a-computer/1/,contact us,htt
 "https://www.hp.com/gb-en/shop/tech-takes/input-output-devices#:~:text=Many%20modern%20devices%2C%20from%20smartphones%20to%20some,touch%20them)%20and%20output%20(displaying%20information)%20devices.",,,No link found ❌
 https://study.com/learn/lesson/input-devices-computer-types.html,,,"Main Page Error: Message: stale element reference: stale element not found in the current frame
   (Session info: chrome=139.0.7258.128); For documentation on this error, please visit: https://www.selenium.dev/documentation/webdriver/troubleshooting/errors#staleelementreferenceexception
-Stacktrace:
-	GetHandleVerifier [0x0xddffc3+65331]
-	GetHandleVerifier [0x0xde0004+65396]
-	(No symbol) [0x0xbd3f63]
-	(No symbol) [0x0xbda750]
-	(No symbol) [0x0xbdca7a]
-	(No symbol) [0x0xbdcaf7]
-	(No symbol) [0x0xc176be]
-	(No symbol) [0x0xc414dc]
-	(No symbol) [0x0xc120d4]
-	(No symbol) [0x0xc41754]
-	(No symbol) [0x0xc62bcb]
-	(No symbol) [0x0xc412d6]
-	(No symbol) [0x0xc10910]
-	(No symbol) [0x0xc11784]
-	GetHandleVerifier [0x0x10238b3+2439203]
-	GetHandleVerifier [0x0x101eae2+2419282]
-	GetHandleVerifier [0x0xe0712a+225434]
-	GetHandleVerifier [0x0xdf6e08+159096]
-	GetHandleVerifier [0x0xdfdd5d+187597]
-	GetHandleVerifier [0x0xde7ad8+96840]
-	GetHandleVerifier [0x0xde7c62+97234]
-	GetHandleVerifier [0x0xdd277a+9962]
-	BaseThreadInitThunk [0x0x76a1fcc9+25]
-	RtlGetAppContainerNamedObjectPath [0x0x779d82ae+286]
-	RtlGetAppContainerNamedObjectPath [0x0x779d827e+238]
-"
 https://www.youtube.com/watch?v=CxGSnA-RTsA&pp=0gcJCf8Ao7VqN5tD&t=158,,,No link found ❌
 "https://www.vedantu.com/coding-for-kids/computer-peripherals#:~:text=Speaker:%20The%20speakers%20are%20the%20output%20devices,music%20or%20talks%20stored%20on%20your%20computer.",,,No link found ❌
 https://www.youtube.com/watch?v=CxGSnA-RTsA&pp=0gcJCf8Ao7VqN5tD&t=657,,,No link found ❌
@@ -140,37 +113,6 @@ https://www.techtarget.com/whatis/definition/personal-computer-PC,contact us,htt
 "https://www.lenovo.com/in/en/glossary/pc/#:~:text=A%20personal%20computer%20(PC)%20is,monitor%2C%20keyboard%2C%20and%20mouse.",support,https://support.lenovo.com/in/en?footer-id=support,No form ❌
 "https://testbook.com/computer-awareness/types-of-computer#:~:text=There%20are%20four%20types%20in,%2C%20Minicomputer%2C%20and%20Micro%20Computer.",,,"Main Page Error: Message: unknown error: net::ERR_NAME_NOT_RESOLVED
   (Session info: chrome=139.0.7258.128)
-Stacktrace:
-	GetHandleVerifier [0x0xddffc3+65331]
-	GetHandleVerifier [0x0xde0004+65396]
-	(No symbol) [0x0xbd3f63]
-	(No symbol) [0x0xbd16cb]
-	(No symbol) [0x0xbc4e82]
-	(No symbol) [0x0xbc68b8]
-	(No symbol) [0x0xbc5118]
-	(No symbol) [0x0xbc4c53]
-	(No symbol) [0x0xbc4961]
-	(No symbol) [0x0xbc2904]
-	(No symbol) [0x0xbc32ab]
-	(No symbol) [0x0xbd797e]
-	(No symbol) [0x0xc637e7]
-	(No symbol) [0x0xc414dc]
-	(No symbol) [0x0xc62bcb]
-	(No symbol) [0x0xc412d6]
-	(No symbol) [0x0xc10910]
-	(No symbol) [0x0xc11784]
-	GetHandleVerifier [0x0x10238b3+2439203]
-	GetHandleVerifier [0x0x101eae2+2419282]
-	GetHandleVerifier [0x0xe0712a+225434]
-	GetHandleVerifier [0x0xdf6e08+159096]
-	GetHandleVerifier [0x0xdfdd5d+187597]
-	GetHandleVerifier [0x0xde7ad8+96840]
-	GetHandleVerifier [0x0xde7c62+97234]
-	GetHandleVerifier [0x0xdd277a+9962]
-	BaseThreadInitThunk [0x0x76a1fcc9+25]
-	RtlGetAppContainerNamedObjectPath [0x0x779d82ae+286]
-	RtlGetAppContainerNamedObjectPath [0x0x779d827e+238]
-"
 https://www.youtube.com/watch?v=Cu3R5it4cQs&t=39,,,No link found ❌
 https://www.youtube.com/watch?v=mCq8-xTH7jA&t=216,,,No link found ❌
 https://www.youtube.com/watch?v=Cu3R5it4cQs,,,No link found ❌
