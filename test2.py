@@ -8,9 +8,7 @@ from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 
-# =========================
 # CONFIG
-# =========================
 INPUT_CSV = "results.csv"     # CSV input file with column "url"
 OUTPUT_CSV = "form_results.csv"
 SCREENSHOT_DIR = "screenshots"
