@@ -1,0 +1,24 @@
+{
+  "name": "website_project(gologin)",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/JawwadIrshad/website_project-Gologin-.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/JawwadIrshad/website_project-Gologin-/issues"
+  },
+  "homepage": "https://github.com/JawwadIrshad/website_project-Gologin-#readme",
+  "dependencies": {
+    "fast-csv": "^5.0.5",
+    "puppeteer": "^24.17.0"
+  }
+}

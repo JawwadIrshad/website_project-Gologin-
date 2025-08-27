@@ -12,9 +12,7 @@ OUTPUT_CSV = "results.csv"     # Output file for collected URLs
 SCROLL_PAUSE = 2               # seconds pause after each scroll
 MAX_SCROLLS = 5                # how many times to scroll down
 
-# =========================
 # BROWSER SETUP
-# =========================
 options = uc.ChromeOptions()
 options.add_argument("--start-maximized")
 options.add_argument("--disable-blink-features=AutomationControlled")
