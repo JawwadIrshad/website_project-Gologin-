@@ -1,20 +1,30 @@
 import time
 import csv
 import random
+import urllib.parse
 import undetected_chromedriver as uc
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import (
+    NoSuchElementException,
+    WebDriverException,
+    TimeoutException,
+)
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 # =========================
 # CONFIG
 # =========================
-KEYWORDS_CSV = "keywords.csv"
-RESULTS_CSV = "results.csv"
-FORM_PAGES_CSV = "form_pages.csv"
-SCROLL_PAUSE = 2
-MAX_SCROLLS = 5
-WAIT_TIME = 5
-KEYWORDS = ["contact", "get in touch", "reach us", "connect", "support", "help"]
+KEYWORDS_CSV = "keywords.csv"                     # input (must have column: keyword)
+SPONSORED_RESULTS_CSV = "sponsored_results.csv"   # output
+ACTIVITY_LOG_CSV = "activity_log.csv"             # Log the activities performed on URLs
+WAIT_TIME = 3                                     # generic wait after loads
+SCROLL_PAUSE = 2                                  # pause between SERP scrolls
+MAX_AD_PAGES_PER_KEYWORD = 5                      # safety cap for depth
+DWELL_RANGE_SECONDS = (4, 10)                     # dwell on a site before/after clicks
+MAX_ACTIVITY_CLICKS_PER_SITE = (1, 3)             # random clicks per site
+SERP_SCROLL_BATCHES = 3                           # how many times to scroll SERP to load ads
 
 # =========================
 # BROWSER SETUP
@@ -22,209 +32,327 @@ KEYWORDS = ["contact", "get in touch", "reach us", "connect", "support", "help"]
 options = uc.ChromeOptions()
 options.add_argument("--start-maximized")
 options.add_argument("--disable-blink-features=AutomationControlled")
+
 driver = uc.Chrome(options=options)
+wait = WebDriverWait(driver, 20)
 
 # =========================
-# NEW FUNCTIONS
+# UTILITIES
 # =========================
-def perform_random_human_activity():
-    """Simulate human-like actions (scrolling, moving, clicking)"""
-    try:
-        # Random scrolling
-        for _ in range(random.randint(2, 5)):
-            driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
-            time.sleep(random.uniform(0.5, 2))
-
-        # Random mouse movements & clicks
-        elements = driver.find_elements(By.CSS_SELECTOR, "a, button, input")
-        if elements:
-            for _ in range(random.randint(1, 3)):
-                el = random.choice(elements)
-                try:
-                    driver.execute_script("arguments[0].scrollIntoView(true);", el)
-                    time.sleep(random.uniform(0.5, 1.5))
-                    el.click()
-                    time.sleep(random.uniform(0.5, 1.5))
-                    driver.back()
-                    time.sleep(random.uniform(0.5, 2))
-                except:
-                    continue
-
-    except Exception as e:
-        print(f"Human-like activity error: {e}")
-
-def set_fake_cookies(url):
-    """Add fake cookies to look like a human user"""
-    try:
-        driver.get(url)
-        time.sleep(2)
-        driver.add_cookie({"name": "session_id", "value": str(random.randint(100000, 999999)), "path": "/", "secure": True})
-        driver.add_cookie({"name": "visited_before", "value": "true", "path": "/"})
-        print(f"🍪 Fake cookies added for {url}")
-    except Exception as e:
-        print(f"Failed to add cookies: {e}")
-
-# =========================
-# ORIGINAL FUNCTIONS
-# =========================
-def read_keywords():
-    keywords = []
-    with open(KEYWORDS_CSV, newline='', encoding='utf-8') as f:
+def read_keywords(path):
+    kws = []
+    with open(path, newline="", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            keywords.append(row["keyword"])
-    print(f"✅ Loaded {len(keywords)} keywords")
-    return keywords
+            kw = row.get("keyword") or row.get("Keyword") or row.get("KW")
+            if kw:
+                kw = kw.strip()
+                if kw:
+                    kws.append(kw)
+    print(f"✅ Loaded {len(kws)} keywords from {path}")
+    return kws
 
-def scrape_google(keyword):
-    urls = []
-    driver.get("https://www.google.com/")
-    time.sleep(2)
-    search_box = driver.find_element(By.NAME, "q")
-    search_box.clear()
-    search_box.send_keys(keyword)
-    search_box.send_keys(Keys.RETURN)
-    time.sleep(3)
+def save_sponsored_results(mapped):
+    with open(SPONSORED_RESULTS_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Keyword", "Sponsored URL"])
+        for kw, urls in mapped.items():
+            for u in sorted(urls):
+                writer.writerow([kw, u])
+    print(f"💾 Saved {sum(len(v) for v in mapped.values())} URLs → {SPONSORED_RESULTS_CSV}")
 
-    for _ in range(MAX_SCROLLS):
+def save_activity_log(logs):
+    with open(ACTIVITY_LOG_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["URL", "Activity"])
+        for log in logs:
+            writer.writerow(log)
+    print(f"💾 Saved {len(logs)} activity logs → {ACTIVITY_LOG_CSV}")
+
+def handle_google_consent_if_any():
+    """Try to accept Google consent dialogs."""
+    try:
+        # EU / regional consent variations
+        candidates = [
+            (By.XPATH, "//button[.//div[text()='I agree']]"),
+            (By.XPATH, "//button[.='I agree']"),
+            (By.XPATH, "//button[.='Accept all']"),
+            (By.XPATH, "//div[@role='none']//button[.//span[contains(text(),'Accept')]]"),
+            (By.XPATH, "//button[contains(., 'I agree')]"),
+            (By.XPATH, "//button[contains(., 'Accept all')]"),
+        ]
+        for by, sel in candidates:
+            btns = driver.find_elements(by, sel)
+            if btns:
+                try:
+                    driver.execute_script("arguments[0].click();", btns[0])
+                    time.sleep(3)
+                    break
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+def open_google_search_results(query):
+    q = urllib.parse.quote_plus(query)
+    search_url = f"https://www.google.com/search?q={q}"
+    driver.get(search_url)
+    handle_google_consent_if_any()
+    try:
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div#search")))
+    except TimeoutException:
+        time.sleep(WAIT_TIME)
+
+def scroll_serp_for_ads():
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    for _ in range(SERP_SCROLL_BATCHES):
         driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
         time.sleep(SCROLL_PAUSE)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
 
-    results = driver.find_elements(By.CSS_SELECTOR, "a")
-    for r in results:
-        href = r.get_attribute("href")
-        if href and "google.com" not in href:
-            urls.append(href)
+def get_sponsored_urls_once():
+    """
+    Extract sponsored ad URLs from common ad containers.
+    Tries multiple selectors for robustness against DOM changes.
+    """
+    urls = set()
 
-    return list(set(urls))
+    # Known containers
+    containers = []
+    for cid in ["tads", "bottomads"]:
+        try:
+            c = driver.find_element(By.ID, cid)
+            containers.append(c)
+        except NoSuchElementException:
+            pass
 
-def save_results(data):
-    with open(RESULTS_CSV, "w", newline="", encoding="utf-8") as f:
-        writer = csv.DictWriter(f, fieldnames=["keyword", "url"])
-        writer.writeheader()
-        writer.writerows(data)
-    print(f"✅ Saved {len(data)} URLs to {RESULTS_CSV}")
+    # ARIA label fallback
+    if not containers:
+        try:
+            containers = driver.find_elements(By.XPATH, "//div[@aria-label='Ads']")
+        except Exception:
+            containers = []
 
-def read_results():
-    urls = []
-    with open(RESULTS_CSV, newline='', encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            urls.append(row["url"])
-    print(f"✅ Loaded {len(urls)} URLs from {RESULTS_CSV}")
-    return urls
+    # Collect anchors within detected containers
+    for c in containers:
+        anchors = c.find_elements(By.XPATH, ".//a[@href]")
+        for a in anchors:
+            href = a.get_attribute("href")
+            if href and "google.com" not in href:
+                urls.add(href)
 
-def has_target_form():
-    try:
-        forms = driver.find_elements(By.TAG_NAME, "form")
-        if not forms:
-            return False, ""
-        for form in forms:
-            inputs = form.find_elements(By.TAG_NAME, "input")
-            textareas = form.find_elements(By.TAG_NAME, "textarea")
-            all_fields = inputs + textareas
+    # Last-resort heuristic (only if nothing found)
+    if not urls:
+        try:
+            ad_labels = driver.find_elements(
+                By.XPATH,
+                "//span[normalize-space()='Sponsored' or normalize-space()='Ad' or normalize-space()='Ads']"
+            )
+            for label in ad_labels:
+                try:
+                    block = label.find_element(
+                        By.XPATH,
+                        "./ancestor::div[contains(@class,'ads') or contains(@class,'ad') or @aria-label='Ads']"
+                    )
+                    anchors = block.find_elements(By.XPATH, ".//a[@href]")
+                    for a in anchors:
+                        href = a.get_attribute("href")
+                        if href and "google.com" not in href:
+                            urls.add(href)
+                except Exception:
+                    continue
+        except Exception:
+            pass
 
-            name_field = phone_field = email_field = message_field = False
+    return list(urls)
 
-            for field in all_fields:
-                name = field.get_attribute("name") or ""
-                placeholder = field.get_attribute("placeholder") or ""
-                field_id = field.get_attribute("id") or ""
-                text = f"{name} {placeholder} {field_id}".lower()
+def go_to_next_serp():
+    candidates = [
+        (By.ID, "pnnext"),
+        (By.XPATH, "//a[@id='pnnext']"),
+        (By.XPATH, "//a[@aria-label='Next']"),
+        (By.XPATH, "//a[.//span[text()='Next']]"),
+    ]
+    for by, sel in candidates:
+        try:
+            nxt = driver.find_element(by, sel)
+            driver.execute_script("arguments[0].click();", nxt)
+            time.sleep(WAIT_TIME)
+            return True
+        except Exception:
+            continue
+    return False
 
-                if any(term in text for term in ["name", "full name", "fullname"]):
-                    name_field = True
-                elif any(term in text for term in ["phone", "mobile", "number"]):
-                    phone_field = True
-                elif any(term in text for term in ["email", "mail"]):
-                    email_field = True
-                elif any(term in text for term in ["message", "comment", "query"]):
-                    message_field = True
+def scrape_sponsored_for_keyword(query, max_pages=MAX_AD_PAGES_PER_KEYWORD):
+    open_google_search_results(query)
+    all_urls = set()
+    page = 0
 
-            if name_field and phone_field and email_field and message_field:
-                return True, "Name, Phone, Email, Message"
+    while True:
+        page += 1
+        scroll_serp_for_ads()
+        urls = get_sponsored_urls_once()
+        print(f"🪧 '{query}' → page {page}: {len(urls)} sponsored URLs found.")
+        all_urls.update(urls)
 
-        return False, ""
-    except Exception as e:
-        print(f"Error checking form: {e}")
-        return False, ""
+        if page >= max_pages:
+            break
+        if not go_to_next_serp():
+            break
 
-def check_form_pages(url):
-    results = []
-    try:
-        set_fake_cookies(url)
-        driver.get(url)
-        time.sleep(2)
-        perform_random_human_activity()
-
-        has_form, fields = has_target_form()
-        if has_form:
-            results.append((driver.current_url, fields))
-            return results
-
-        links = driver.find_elements(By.TAG_NAME, "a")
-        candidate_links = []
-
-        for link in links:
-            try:
-                text = link.text.strip().lower()
-                href = link.get_attribute("href")
-                if href and any(keyword in text for keyword in KEYWORDS):
-                    candidate_links.append(href)
-            except:
-                continue
-
-        for href in candidate_links:
-            try:
-                set_fake_cookies(href)
-                driver.get(href)
-                time.sleep(2)
-                perform_random_human_activity()
-                has_form, fields = has_target_form()
-                if has_form:
-                    results.append((driver.current_url, fields))
-                    break
-            except Exception as e:
-                print(f"Error checking {href}: {e}")
-
-    except Exception as e:
-        print(f"Error processing {url}: {e}")
-
-    return results
-
-def save_form_pages(results):
-    with open(FORM_PAGES_CSV, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(["form_url", "form_fields"])
-        writer.writerows(results)
-    print(f"🎯 Saved {len(results)} form pages to {FORM_PAGES_CSV}")
+    return sorted(all_urls)
 
 # =========================
-# MAIN SCRIPT
+# HUMAN-LIKE ACTIVITY + FAKE COOKIES
+# =========================
+def set_fake_cookies_for_current_domain():
+    """
+    Adds a couple of benign cookies to the CURRENT domain.
+    Must be called AFTER driver.get(url) (same-domain restriction).
+    Refresh to apply.
+    """
+    try:
+        driver.add_cookie({"name": "session_id", "value": str(random.randint(100000, 999999)), "path": "/", "secure": True})
+        driver.add_cookie({"name": "visited_before", "value": "true", "path": "/"})
+
+
+    except Exception as e:
+        print(f"⚠️ Failed to set cookies: {e}")
+
+# =========================
+# HUMAN-ACTIVITY ROTATION
+# =========================
+ACTIVITY_ROTATION = ["Dwell", "Scroll", "Form", "Click"]  # order of rotation
+
+def perform_rotated_activity_on_url(url, activity_type):
+    """Perform a single human-like action on the URL based on rotation."""
+    activities = []
+
+    # tiny dwell before activity to look human
+    time.sleep(random.uniform(1, 2))
+
+    if activity_type == "Dwell":
+        time.sleep(random.uniform(*DWELL_RANGE_SECONDS))
+        activities.append("Dwell")
+
+    elif activity_type == "Scroll":
+        try:
+            driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
+            time.sleep(random.uniform(0.5, 1.2))
+            activities.append("Scrolled")
+        except Exception:
+            activities.append("Scroll Failed")
+
+    elif activity_type == "Form":
+        def fill_form():
+            """
+            Attempts to find and fill a simple form (e.g., input[type='text'] and submit).
+            Returns True if a form was found and submitted, False otherwise.
+            """
+            try:
+                form = driver.find_element(By.TAG_NAME, "form")
+                inputs = form.find_elements(By.CSS_SELECTOR, "input[type='text'], input[type='email']")
+                submitted = False
+                for inp in inputs:
+                    inp.clear()
+                    inp.send_keys("test")
+                    submitted = True
+                submit_btns = form.find_elements(By.CSS_SELECTOR, "input[type='submit'], button[type='submit'], button")
+                if submit_btns:
+                    submit_btns[0].click()
+                    time.sleep(random.uniform(1, 2))
+                    submitted = True
+                return submitted
+            except Exception:
+                return False
+
+        if fill_form():
+            activities.append("Form Submitted")
+        else:
+            activities.append("Form Not Found")
+
+    elif activity_type == "Click":
+        elements = driver.find_elements(
+            By.CSS_SELECTOR,
+            "a, button, input[type='button'], input[type='submit']"
+        )
+        random.shuffle(elements)
+        if elements:
+            el = elements[0]
+            try:
+                driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
+                time.sleep(random.uniform(0.3, 1.0))
+                el.click()
+                time.sleep(random.uniform(1.0, 2.0))
+                activities.append("Clicked")
+            except WebDriverException:
+                activities.append("Click Failed")
+        else:
+            activities.append("No Elements to Click")
+
+    # tiny dwell after activity
+    time.sleep(random.uniform(1, 2))
+    return activities
+
+def visit_urls_with_activity(urls):
+    logs = []
+    uniq = []
+    seen = set()
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            uniq.append(u)
+
+    print(f"🧭 Visiting {len(uniq)} unique sponsored URLs with cookies + random activity...")
+    for i, u in enumerate(uniq, 1):
+        print(f"   ({i}/{len(uniq)}) {u}")
+        try:
+            driver.get(u)
+            time.sleep(random.uniform(2, 4))
+            # set_fake_cookies_for_current_domain()
+
+            # Determine which activity to perform based on rotation
+            activity_type = ACTIVITY_ROTATION[i % len(ACTIVITY_ROTATION)]
+            activities = perform_rotated_activity_on_url(u, activity_type)
+
+            logs.append([u, ', '.join(activities)])
+
+        except Exception as e:
+            print(f"   ✖ Visit failed: {u} | {e}")
+    return logs
+
+# =========================
+# MAIN
 # =========================
 if __name__ == "__main__":
-    keywords = read_keywords()
-    all_urls = []
+    try:
+        keywords = read_keywords(KEYWORDS_CSV)
 
-    for kw in keywords:
-        print(f"🔍 Searching: {kw}")
-        urls = scrape_google(kw)
-        print(f"   ➝ Found {len(urls)} URLs")
-        for url in urls:
-            all_urls.append({"keyword": kw, "url": url})
+        # 1) Scrape sponsored URLs for each keyword
+        results_map = {}
+        for kw in keywords:
+            print(f"\n🔍 Scraping sponsored ads for: {kw}")
+            urls = scrape_sponsored_for_keyword(kw)
+            results_map[kw] = urls
+            print(f"✅ '{kw}': {len(urls)} unique sponsored URLs")
 
-    save_results(all_urls)
+        # 2) Save to CSV
+        save_sponsored_results(results_map)
 
-    urls_to_check = read_results()
-    found_forms = []
+        # 3) Visit each collected URL, set fake cookies, act like a human, and log activities
+        all_urls = []
+        for lst in results_map.values():
+            all_urls.extend(lst)
 
-    for i, url in enumerate(urls_to_check):
-        print(f"({i+1}/{len(urls_to_check)}) Checking {url}")
-        results = check_form_pages(url)
-        if results:
-            found_forms.extend(results)
-            print(f"✅ Form found ({len(found_forms)} total)")
+        logs = visit_urls_with_activity(all_urls)
+        save_activity_log(logs)
 
-    save_form_pages(found_forms)
-    driver.quit()
-    print("🚀 Done!")
+        print("\n🚀 Done!")
+    finally:
+        try:
+            driver.quit()
+        except Exception:
+            pass

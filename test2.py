@@ -3,7 +3,6 @@ import csv
 import random
 import urllib.parse
 import undetected_chromedriver as uc
-
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.common.exceptions import (
@@ -19,6 +18,7 @@ from selenium.webdriver.support import expected_conditions as EC
 # =========================
 KEYWORDS_CSV = "keywords.csv"                     # input (must have column: keyword)
 SPONSORED_RESULTS_CSV = "sponsored_results.csv"   # output
+ACTIVITY_LOG_CSV = "activity_log.csv"             # Log the activities performed on URLs
 WAIT_TIME = 3                                     # generic wait after loads
 SCROLL_PAUSE = 2                                  # pause between SERP scrolls
 MAX_AD_PAGES_PER_KEYWORD = 5                      # safety cap for depth
@@ -61,6 +61,14 @@ def save_sponsored_results(mapped):
                 writer.writerow([kw, u])
     print(f"💾 Saved {sum(len(v) for v in mapped.values())} URLs → {SPONSORED_RESULTS_CSV}")
 
+def save_activity_log(logs):
+    with open(ACTIVITY_LOG_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["URL", "Activity"])
+        for log in logs:
+            writer.writerow(log)
+    print(f"💾 Saved {len(logs)} activity logs → {ACTIVITY_LOG_CSV}")
+
 def handle_google_consent_if_any():
     """Try to accept Google consent dialogs."""
     try:
@@ -92,6 +100,7 @@ def open_google_search_results(query):
     handle_google_consent_if_any()
     try:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div#search")))
+
     except TimeoutException:
         time.sleep(WAIT_TIME)
 
@@ -209,51 +218,87 @@ def set_fake_cookies_for_current_domain():
     try:
         driver.add_cookie({"name": "session_id", "value": str(random.randint(100000, 999999)), "path": "/", "secure": True})
         driver.add_cookie({"name": "visited_before", "value": "true", "path": "/"})
-        driver.add_cookie({"name": "ab_variant", "value": random.choice(["A", "B"]), "path": "/"})
         driver.refresh()
         print("🍪 Fake cookies set & page refreshed")
     except Exception as e:
         print(f"⚠️ Failed to set cookies: {e}")
 
-def perform_random_human_activity():
-    """Simulate human-like actions on the current page."""
+# =========================
+# HUMAN-ACTIVITY ROTATION
+# =========================
+ACTIVITY_ROTATION = ["Dwell", "Scroll", "Form", "Click"]  # order of rotation
+
+def fill_form():
+    """
+    Attempts to find and fill a simple form on the page.
+    Returns True if a form was found and submitted, False otherwise.
+    """
     try:
-        # random dwell before actions
+        forms = driver.find_elements(By.TAG_NAME, "form")
+        for form in forms:
+            inputs = form.find_elements(By.CSS_SELECTOR, "input[type='text'], input[type='email']")
+            for inp in inputs:
+                inp.clear()
+                inp.send_keys("test@example.com")
+            submit_buttons = form.find_elements(By.CSS_SELECTOR, "input[type='submit'], button[type='submit'], button")
+            if submit_buttons:
+                submit_buttons[0].click()
+                time.sleep(1)
+                return True
+        return False
+    except Exception:
+        return False
+
+def perform_rotated_activity_on_url(url, activity_type):
+    """Perform a single human-like action on the URL based on rotation."""
+    activities = []
+
+    # tiny dwell before activity to look human
+    time.sleep(random.uniform(1, 2))
+
+    if activity_type == "Dwell":
         time.sleep(random.uniform(*DWELL_RANGE_SECONDS))
+        activities.append("Dwell")
 
-        # random scrolls
-        for _ in range(random.randint(1, 3)):
+    elif activity_type == "Scroll":
+        try:
             driver.find_element(By.TAG_NAME, "body").send_keys(Keys.PAGE_DOWN)
-            time.sleep(random.uniform(0.5, 1.5))
+            time.sleep(random.uniform(0.5, 1.2))
+            activities.append("Scrolled")
+        except Exception:
+            activities.append("Scroll Failed")
 
-        # random clicks
+    elif activity_type == "Form":
+        if fill_form():
+            activities.append("Form Submitted")
+        else:
+            activities.append("Form Not Found")
+
+    elif activity_type == "Click":
         elements = driver.find_elements(
             By.CSS_SELECTOR,
             "a, button, input[type='button'], input[type='submit']"
         )
         random.shuffle(elements)
-        for _ in range(random.randint(*MAX_ACTIVITY_CLICKS_PER_SITE)):
-            if not elements:
-                break
-            el = elements.pop()
+        if elements:
+            el = elements[0]
             try:
                 driver.execute_script("arguments[0].scrollIntoView({block:'center'});", el)
-                time.sleep(random.uniform(0.4, 1.2))
+                time.sleep(random.uniform(0.3, 1.0))
                 el.click()
-                time.sleep(random.uniform(1.0, 2.5))
-                if random.random() < 0.5:  # sometimes go back
-                    driver.back()
-                    time.sleep(random.uniform(0.8, 2.0))
+                time.sleep(random.uniform(1.0, 2.0))
+                activities.append("Clicked")
             except WebDriverException:
-                continue
+                activities.append("Click Failed")
+        else:
+            activities.append("No Elements to Click")
 
-        # random dwell after
-        time.sleep(random.uniform(*DWELL_RANGE_SECONDS))
-
-    except Exception as e:
-        print(f"⚠️ Human-like activity error: {e}")
+    # tiny dwell after activity
+    time.sleep(random.uniform(1, 2))
+    return activities
 
 def visit_urls_with_activity(urls):
+    logs = []
     uniq = []
     seen = set()
     for u in urls:
@@ -268,9 +313,16 @@ def visit_urls_with_activity(urls):
             driver.get(u)
             time.sleep(random.uniform(2, 4))
             set_fake_cookies_for_current_domain()
-            perform_random_human_activity()
+
+            # Determine which activity to perform based on rotation
+            activity_type = ACTIVITY_ROTATION[i % len(ACTIVITY_ROTATION)]
+            activities = perform_rotated_activity_on_url(u, activity_type)
+
+            logs.append([u, ', '.join(activities)])
+
         except Exception as e:
             print(f"   ✖ Visit failed: {u} | {e}")
+    return logs
 
 # =========================
 # MAIN
@@ -290,11 +342,13 @@ if __name__ == "__main__":
         # 2) Save to CSV
         save_sponsored_results(results_map)
 
-        # 3) Visit each collected URL, set fake cookies, and act like a human
+        # 3) Visit each collected URL, set fake cookies, act like a human, and log activities
         all_urls = []
         for lst in results_map.values():
             all_urls.extend(lst)
-        visit_urls_with_activity(all_urls)
+
+        logs = visit_urls_with_activity(all_urls)
+        save_activity_log(logs)
 
         print("\n🚀 Done!")
     finally:
