@@ -30,7 +30,7 @@ SERP_SCROLL_BATCHES = 3                           # how many times to scroll SER
 # PROXIES
 # =========================
 PROXIES = [
- 
+
 ]
 
 # =========================
@@ -44,24 +44,14 @@ def get_random_proxy():
     return proxy_address, proxy_auth
 
 def set_up_driver_with_proxy():
-    # Get the random proxy and authentication details
-    proxy_address, proxy_auth = get_random_proxy()  # Proxy address and authentication details
+    proxy_address, proxy_auth = get_random_proxy()
 
-    # Split the proxy_auth to get username and password
-    username, password = proxy_auth.split(":")
-    
-    # Format the proxy with authentication
-    proxy_with_auth = f"http://{username}:{password}@{proxy_address}"
-
-    # Set up Chrome options to use the proxy with authentication
     options = uc.ChromeOptions()
     options.add_argument("--start-maximized")
     options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_argument(f'--proxy-server={proxy_with_auth}')  # Set proxy with auth details
-
+    options.add_argument(f'--proxy-server=http://{proxy_address}')
     driver = uc.Chrome(options=options)
     return driver
-
 
 # =========================
 # UTILITIES
@@ -323,3 +313,5 @@ if __name__ == "__main__":
             driver.quit()
         except Exception:
             pass
+
+
