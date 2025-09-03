@@ -1,0 +1,249 @@
+import time
+import os
+import csv
+import random
+import urllib.parse
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.common.exceptions import NoSuchElementException, WebDriverException, TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from seleniumwire import undetected_chromedriver as uc
+
+# =========================
+# CONFIG
+# =========================
+BASE_PROFILE_DIR = "C:/ChromeProfiles"
+KEYWORDS_CSV = "keywords.csv"
+SPONSORED_RESULTS_CSV = "sponsored_results.csv"
+ACTIVITY_LOG_CSV = "activity_log.csv"
+
+WAIT_TIME = 3
+SCROLL_PAUSE = 2
+MAX_AD_PAGES_PER_KEYWORD = 5
+DWELL_RANGE_SECONDS = (4, 10)
+SERP_SCROLL_BATCHES = 3
+ACTIVITY_ROTATION = ["Dwell", "Scroll", "Form", "Click"]
+
+# Your proxy list
+proxies = [
+]
+
+# =========================
+# UTILITIES
+# =========================
+def read_keywords(path):
+    kws = []
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            kw = row.get("keyword") or row.get("Keyword") or row.get("KW")
+            if kw:
+                kw = kw.strip()
+                if kw:
+                    kws.append(kw)
+    print(f"✅ Loaded {len(kws)} keywords from {path}")
+    return kws
+
+def save_sponsored_results(mapped):
+    with open(SPONSORED_RESULTS_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Keyword", "Sponsored URL"])
+        for kw, urls in mapped.items():
+            for u in sorted(urls):
+                writer.writerow([kw, u])
+    print(f"💾 Saved {sum(len(v) for v in mapped.values())} URLs → {SPONSORED_RESULTS_CSV}")
+
+def save_activity_log(logs):
+    with open(ACTIVITY_LOG_CSV, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["URL", "Activity"])
+        for log in logs:
+            writer.writerow(log)
+    print(f"💾 Saved {len(logs)} activity logs → {ACTIVITY_LOG_CSV}")
+
+# =========================
+# CHROME SETUP WITH PROXY
+# =========================
+def setup_driver(profile_index, proxy):
+    profile_dir = os.path.join(BASE_PROFILE_DIR, f"Profile{profile_index}")
+    os.makedirs(profile_dir, exist_ok=True)
+
+    options = uc.ChromeOptions()
+    options.add_argument(f"--user-data-dir={profile_dir}")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_argument("--start-maximized")
+    options.add_argument("--ignore-certificate-errors")
+
+    seleniumwire_options = {
+        "proxy": {
+            "http": f"http://{proxy['user']}:{proxy['pass']}@{proxy['ip']}:{proxy['port']}",
+            "https": f"http://{proxy['user']}:{proxy['pass']}@{proxy['ip']}:{proxy['port']}",
+            "no_proxy": "localhost,127.0.0.1"
+        }
+    }
+
+    driver = uc.Chrome(options=options, seleniumwire_options=seleniumwire_options)
+    wait = WebDriverWait(driver, 20)
+    return driver, wait
+
+# =========================
+# GOOGLE SCRAPING FUNCTIONS
+# =========================
+def handle_google_consent_if_any(driver):
+    try:
+        candidates = [
+            (By.XPATH, "//button[.//div[text()='I agree']]"),
+            (By.XPATH, "//button[.='I agree']"),
+            (By.XPATH, "//button[.='Accept all']"),
+            (By.XPATH, "//div[@role='none']//button[.//span[contains(text(),'Accept')]]"),
+            (By.XPATH, "//button[contains(., 'I agree')]"),
+            (By.XPATH, "//button[contains(., 'Accept all')]"),
+        ]
+        for by, sel in candidates:
+            btns = driver.find_elements(by, sel)
+            if btns:
+                driver.execute_script("arguments[0].click();", btns[0])
+                time.sleep(3)
+                break
+    except Exception:
+        pass
+
+def open_google_search_results(driver, query):
+    q = urllib.parse.quote_plus(query)
+    search_url = f"https://www.google.com/search?q={q}"
+    driver.get(search_url)
+    handle_google_consent_if_any(driver)
+    try:
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.CSS_SELECTOR, "div#search")))
+    except TimeoutException:
+        time.sleep(WAIT_TIME)
+
+def scroll_serp_for_ads(driver):
+    last_height = driver.execute_script("return document.body.scrollHeight")
+    for _ in range(SERP_SCROLL_BATCHES):
+        driver.find_element(By.TAG_NAME, "body").send_keys(Keys.END)
+        time.sleep(SCROLL_PAUSE)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break
+        last_height = new_height
+
+def get_sponsored_urls_once(driver):
+    urls = set()
+    containers = []
+    for cid in ["tads", "bottomads"]:
+        try:
+            c = driver.find_element(By.ID, cid)
+            containers.append(c)
+        except NoSuchElementException:
+            pass
+
+    if not containers:
+        try:
+            containers = driver.find_elements(By.XPATH, "//div[@aria-label='Ads']")
+        except Exception:
+            containers = []
+
+    for c in containers:
+        anchors = c.find_elements(By.XPATH, ".//a[@href]")
+        for a in anchors:
+            href = a.get_attribute("href")
+            if href and "google.com" not in href:
+                urls.add(href)
+
+    if not urls:
+        try:
+            ad_labels = driver.find_elements(By.XPATH, "//span[normalize-space()='Sponsored' or normalize-space()='Ad' or normalize-space()='Ads']")
+            for label in ad_labels:
+                try:
+                    block = label.find_element(By.XPATH, "./ancestor::div[contains(@class,'ads') or contains(@class,'ad') or @aria-label='Ads']")
+                    anchors = block.find_elements(By.XPATH, ".//a[@href]")
+                    for a in anchors:
+                        href = a.get_attribute("href")
+                        if href and "google.com" not in href:
+                            urls.add(href)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+    return list(urls)
+
+def go_to_next_serp(driver):
+    candidates = [
+        (By.ID, "pnnext"),
+        (By.XPATH, "//a[@id='pnnext']"),
+        (By.XPATH, "//a[@aria-label='Next']"),
+        (By.XPATH, "//a[.//span[text()='Next']]"),
+    ]
+    for by, sel in candidates:
+        try:
+            nxt = driver.find_element(by, sel)
+            driver.execute_script("arguments[0].click();", nxt)
+            time.sleep(WAIT_TIME)
+            return True
+        except Exception:
+            continue
+    return False
+
+def scrape_sponsored_for_keyword(driver, query, max_pages=MAX_AD_PAGES_PER_KEYWORD):
+    open_google_search_results(driver, query)
+    all_urls = set()
+    page = 0
+    while True:
+        page += 1
+        scroll_serp_for_ads(driver)
+        urls = get_sponsored_urls_once(driver)
+        print(f"🪧 '{query}' → page {page}: {len(urls)} sponsored URLs found.")
+        all_urls.update(urls)
+        if page >= max_pages:
+            break
+        if not go_to_next_serp(driver):
+            break
+    return sorted(all_urls)
+
+# =========================
+# HUMAN-LIKE ACTIVITY
+# =========================
+def perform_random_activity(driver, urls, log):
+    activity = random.choice(ACTIVITY_ROTATION)
+    url = random.choice(urls)
+    try:
+        driver.get(url)
+        dwell = random.randint(*DWELL_RANGE_SECONDS)
+        time.sleep(dwell)
+        log.append((url, activity))
+        print(f"🧍 {activity} on {url} for {dwell}s")
+    except Exception:
+        pass
+
+# =========================
+# MAIN LOOP
+# =========================
+def main():
+    keywords = read_keywords(KEYWORDS_CSV)
+    mapped_results = {}
+    activity_log = []
+
+    for idx, kw in enumerate(keywords):
+        proxy = random.choice(proxies)
+        driver, wait = setup_driver(idx % len(proxies), proxy)
+        try:
+            urls = scrape_sponsored_for_keyword(driver, kw)
+            mapped_results[kw] = urls
+            if urls:
+                perform_random_activity(driver, urls, activity_log)
+        except WebDriverException as e:
+            print(f"❌ Error with keyword '{kw}': {e}")
+        finally:
+            driver.quit()
+        time.sleep(random.randint(2, 5))
+
+    save_sponsored_results(mapped_results)
+    save_activity_log(activity_log)
+    print("✅ Scraping finished successfully.")
+
+if __name__ == "__main__":
+    main()
