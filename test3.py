@@ -10,7 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 # CONFIG
 # =========================
 INPUT_CSV = "results.csv"   # input file with "url" column
-OUTPUT_CSV = "form_pages.csv"
+OUTPUT_CSV = "form_pages.csv" #output file with "url" column
 WAIT_TIME = 5
 KEYWORDS = ["contact", "get in touch", "reach us", "connect", "support", "help"]
 
