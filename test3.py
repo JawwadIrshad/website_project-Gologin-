@@ -169,4 +169,4 @@ for i, url in enumerate(urls):
         print(f"✅ Form found! ({form_count} so far)")
 
 driver.quit()
-print(f"🎯 Finished. Found {form_count} URLs with forms. Results saved in {OUTPUT_CSV}")
+print(f"🎯 Finished. Found {form_count} URLs with the forms. Results the saved in {OUTPUT_CSV} file")
