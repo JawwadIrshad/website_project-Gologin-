@@ -19,7 +19,7 @@ from selenium.webdriver.support import expected_conditions as EC
 # =========================
 # CONFIG
 # =========================
-KEYWORDS_CSV = "keywords.csv"                     # input (must have column: keyword)
+KEYWORDS_CSV = "keywords.csv"                     # input keywords (must have column: keyword)
 SPONSORED_RESULTS_CSV = "sponsored_results.csv"   # output
 ACTIVITY_LOG_CSV = "activity_log.csv"             # Log the activities performed on URLs
 WAIT_TIME = 3                                     # generic wait after loads
