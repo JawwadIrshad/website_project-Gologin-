@@ -40,7 +40,7 @@ SERP_SCROLL_BATCHES = 3
 ACTIVITY_ROTATION = ["Dwell", "Scroll", "Form", "Click"]
 
 # Your proxy list
-proxies = []
+proxies = [] # put your proxies here
 
 # =========================
 # UTILITIES
