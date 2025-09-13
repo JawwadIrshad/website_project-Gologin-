@@ -40,15 +40,7 @@ SERP_SCROLL_BATCHES = 3
 ACTIVITY_ROTATION = ["Dwell", "Scroll", "Form", "Click"]
 
 # Your proxy list
-proxies = [
-    {"ip": "207.244.217.165", "port": "6712", "user": "quotubxy", "pass": "3uu78v87a7un"},
-    {"ip": "107.172.163.27", "port": "6543", "user": "quotubxy", "pass": "3uu78v87a7un"},
-    {"ip": "104.222.161.211", "port": "6343", "user": "quotubxy", "pass": "3uu78v87a7un"},
-    {"ip": "64.137.96.74", "port": "6641", "user": "quotubxy", "pass": "3uu78v87a7un"},
-    {"ip": "216.10.27.159", "port": "6837", "user": "quotubxy", "pass": "3uu78v87a7un"},
-    {"ip": "136.0.207.84", "port": "6661", "user": "quotubxy", "pass": "3uu78v87a7un"},
-    {"ip": "142.147.128.93", "port": "6593", "user": "quotubxy", "pass": "3uu78v87a7un"}
-]
+proxies = []
 
 # =========================
 # UTILITIES
